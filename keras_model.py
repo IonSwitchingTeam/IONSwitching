@@ -1,11 +1,49 @@
-from tensorflow.keras import Model
-from tensorflow.keras.layers import Embedding, Dense, Concatenate, Conv1D, Bidirectional, LSTM, GlobalAveragePooling1D, GlobalMaxPooling1D, SpatialDropout1D
+from keras import Input, Model
+from keras.layers import Embedding, Dense, Concatenate, Conv1D, Bidirectional, LSTM, GlobalAveragePooling1D, GlobalMaxPooling1D, SpatialDropout1D
 from keras.engine import InputSpec, Layer
 from keras import initializers
 from keras import backend as K
+from keras.layers import concatenate
 
 # https://github.com/ShawnyXiao/TextClassification-Keras/blob/master/model/RCNNVariant/rcnn_variant.py
 class RCNNVariant(Model):
+    def __init__(self,
+                 max_len,
+                 max_features,
+                 embedding_dims,
+                 class_num=1,
+                 last_activation='sigmoid'):
+        super(RCNNVariant, self).__init__()
+        self.max_len = max_len
+        self.max_features = max_features
+        self.embedding_dims = embedding_dims
+        self.class_num = class_num
+        self.dropout_rate = 0.5
+        self.last_activation = last_activation
+
+    def get_model(self):
+        input = Input(shape=(self.max_len,))
+        embedding = Embedding(self.max_features, self.embedding_dims, input_length=self.max_len, trainable=True)(input)
+        embedding = SpatialDropout1D(self.dropout_rate)(embedding)
+        LSTM_forward = LSTM(128, return_sequences=True)(embedding)
+        LSTM_backward = LSTM(128, return_sequences=True, go_backwards=True)(embedding)
+        x = Concatenate()([LSTM_forward, embedding, LSTM_backward])
+
+        convs = []
+        for i in [1, 2, 3, 4, 5]:
+            conv = Conv1D(filters=128, kernel_size=i, activation='relu')(x)
+            convs.append(conv)
+
+        x = [GlobalAveragePooling1D()(conv) for conv in convs] + \
+            [GlobalMaxPooling1D()(conv) for conv in convs] + \
+            [AttentionWeightedAverage()(conv) for conv in convs]
+
+        x = Concatenate()(x)
+        output = Dense(self.class_num, activation=self.last_activation)(x)
+        model = Model(inputs=input, outputs=output)
+        return model
+
+class RNN():
     def __init__(self,
                  maxlen,
                  max_features,
@@ -18,23 +56,6 @@ class RCNNVariant(Model):
         self.embedding_dims = embedding_dims
         self.class_num = class_num
         self.last_activation = last_activation
-
-    def call(self, inputs):
-        embedding =  Embedding(self.max_features, self.embedding_dims, input_length=self.maxlen)(inputs)
-        embedding = SpatialDropout1D(rate=0.5)(embedding)
-        LSTM_forward = LSTM(128, return_sequences=True)(embedding)
-        LSTM_backward = LSTM(128, return_sequences=True, go_backwards=True)(embedding)
-        x = Concatenate([LSTM_forward, embedding, LSTM_backward])
-
-        convs = []
-        for i in [1,2,3,4,5]:
-            conv = Conv1D(filters=128, kernel_size=i, activation='relu')(x)
-            convs.append(conv)
-        x = [GlobalAveragePooling1D(conv) for conv in convs] + [GlobalMaxPooling1D(conv) for conv in convs] + [AttentionWeightedAverage(conv) for conv in convs]
-
-        x = Concatenate(x)
-        output = Dense(self.class_num, activation=self.last_activation)(x)
-        return output
 
 #https://github.com/bfelbo/DeepMoji/blob/master/deepmoji/attlayer.py
 #https://arxiv.org/abs/1708.00524
