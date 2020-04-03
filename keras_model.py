@@ -5,6 +5,7 @@ from keras import initializers
 from keras import backend as K
 from keras.layers import concatenate
 
+
 # https://github.com/ShawnyXiao/TextClassification-Keras/blob/master/model/RCNNVariant/rcnn_variant.py
 class RCNNVariant(Model):
     def __init__(self,
